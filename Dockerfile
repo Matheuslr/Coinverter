@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # --------------------
 FROM base AS builder
 
-# Instala ferramentas de build e libs necessárias (combinado em uma layer)
+# Instala ferramentas de build e libs necessárias
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -23,14 +23,8 @@ RUN apt-get update && \
         libtool autoconf automake pkg-config \
         python3-dev \
         libstdc++6 \
-    && pip install --upgrade pip cython \
+    && pip install --upgrade pip wheel setuptools \
     && rm -rf /var/lib/apt/lists/*
-
-# Instala libddwaf (otimizada com build paralelo)
-RUN git clone --depth 1 https://github.com/DataDog/libddwaf.git /tmp/libddwaf && \
-    cd /tmp/libddwaf && mkdir build && cd build && \
-    cmake .. && make -j$(nproc) && make install && \
-    rm -rf /tmp/libddwaf
 
 # Diretório da aplicação
 WORKDIR /app
@@ -38,8 +32,11 @@ WORKDIR /app
 # Copia apenas requirements.txt primeiro (melhor cache)
 COPY requirements.txt .
 
-# Instala dependências Python (será cached se requirements.txt não mudar)
-RUN pip install --no-cache-dir -r requirements.txt
+# Estratégia alternativa: instalar ddtrace com --no-build-isolation ou versão específica
+# que não precisa compilar libddwaf manualmente
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt || \
+    pip install --no-cache-dir --no-build-isolation -r requirements.txt || \
+    (sed -i 's/ddtrace==1.0.2/ddtrace>=1.5.0/g' requirements.txt && pip install --no-cache-dir -r requirements.txt)
 
 # Copia resto do código (depois das dependências para melhor cache)
 COPY . .
@@ -62,8 +59,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/* \
     && usermod -u 1000 www-data && usermod -aG staff www-data
 
-# Copia libs da libddwaf e pacotes Python instalados
-COPY --from=builder /usr/local/lib /usr/local/lib
+# Copia pacotes Python instalados
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
