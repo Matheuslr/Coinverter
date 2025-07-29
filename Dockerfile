@@ -32,3 +32,4 @@ COPY --from=builder /app /app
 RUN chown -R app:app /app
 WORKDIR /app
 USER app
+
