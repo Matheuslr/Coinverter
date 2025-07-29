@@ -21,7 +21,7 @@ COPY . .
 FROM python:3.9.6-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl unixodbc libffi7 libssl1.1 \
+    curl unixodbc libffi7 libssl1.1 make \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 1000 app
 
@@ -33,3 +33,5 @@ RUN chown -R app:app /app
 WORKDIR /app
 USER app
 
+# Comando padrão que mantém container rodando para CI
+CMD ["tail", "-f", "/dev/null"]

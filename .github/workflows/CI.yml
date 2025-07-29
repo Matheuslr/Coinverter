@@ -8,14 +8,13 @@ on:
 
 env:
   DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4  # Atualizado
+      - uses: actions/checkout@v4
 
       - name: Free up disk space
         run: |
@@ -26,40 +25,48 @@ jobs:
       - name: Create env file
         run: make copy-envs
 
-      - name: Build the stack
+      - name: Build Docker image
         run: |
-          # Build com configurações otimizadas para CI
-          DOCKER_BUILDKIT=1 docker compose build \
+          DOCKER_BUILDKIT=1 docker build \
             --build-arg MAKEFLAGS="-j2" \
-            --build-arg CMAKE_BUILD_PARALLEL_LEVEL=2
+            -t test-app .
 
-      - name: Start the stack
-        run: docker compose up -d
-
-      - name: Wait for services
+      - name: Test Docker image
         run: |
-          sleep 30
-          docker compose ps
+          echo "=== Testing image build ==="
+          docker run --rm test-app python --version
+          docker run --rm test-app pip list | head -10
 
-      - name: Install Dependencies
+      - name: Run Dependencies Installation
         run: |
-          # Executa dentro do container, não no runner
-          docker compose exec -T app make dependencies
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            test-app \
+            make dependencies
 
       - name: Run Lint
         run: |
-          docker compose exec -T app make lint
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            test-app \
+            make lint
 
       - name: Run Tests
         run: |
-          docker compose exec -T app make test-coverage
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            test-app \
+            make test-coverage
 
-      - name: Show logs on failure
-        if: failure()
-        run: |
-          docker compose logs
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose down -v
+      - name: Upload coverage (if exists)
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: ignore
