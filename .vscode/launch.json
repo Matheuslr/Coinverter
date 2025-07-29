@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug FastAPI (python -m app --reload)",
+      "type": "python",
+      "request": "launch",
+      "module": "app",
+      "args": ["--reload"],
+      "justMyCode": false,
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/venv/bin/python"
+    }
+  ]
+}

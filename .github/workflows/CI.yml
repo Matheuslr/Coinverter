@@ -1,0 +1,28 @@
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build the stack
+        run: docker-compose up -d
+
+      - name: Create env file
+        run: make copy-envs
+
+      - name: Install Dependencies
+        run: |
+          make dependencies
+
+      - name: Run Lint
+        run: |
+          make lint
+
+      - name: Run Tests
+        run: |
+          make test-coverage
