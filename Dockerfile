@@ -1,4 +1,4 @@
-FROM python:3.9.6-slim-buster
+FROM python:3.9.6-slim-bullseye
 
 RUN apt-get update && apt-get install gcc g++ make curl jq -y \
     wait-for-it \
