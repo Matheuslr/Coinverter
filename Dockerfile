@@ -3,67 +3,69 @@
 # --------------------
 FROM python:3.9.6-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    LD_LIBRARY_PATH=/usr/local/lib
+    PYTHONUNBUFFERED=1
 
 # --------------------
 # Stage 1: Build
 # --------------------
 FROM base AS builder
 
-# Instala ferramentas de build e libs necessárias
+# Instala apenas dependências essenciais para build
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        gcc g++ make cmake git \
         curl jq bash \
         libffi-dev \
         libssl-dev \
         unixodbc-dev \
-        libtool autoconf automake pkg-config \
         python3-dev \
-        libstdc++6 \
-    && pip install --upgrade pip wheel setuptools \
+    && pip install --upgrade pip wheel \
     && rm -rf /var/lib/apt/lists/*
 
-# Diretório da aplicação
 WORKDIR /app
 
-# Copia apenas requirements.txt primeiro (melhor cache)
-COPY requirements.txt .
+# Copia requirements.txt e cria versão sem ddtrace problemático
+COPY requirements.txt requirements_original.txt
 
-# Estratégia alternativa: instalar ddtrace com --no-build-isolation ou versão específica
-# que não precisa compilar libddwaf manualmente
-RUN pip install --no-cache-dir --prefer-binary -r requirements.txt || \
-    pip install --no-cache-dir --no-build-isolation -r requirements.txt || \
-    (sed -i 's/ddtrace==1.0.2/ddtrace>=1.5.0/g' requirements.txt && pip install --no-cache-dir -r requirements.txt)
+# Remove ddtrace problemático e instala dependências restantes
+RUN grep -v "^ddtrace" requirements_original.txt > requirements_clean.txt && \
+    pip install --no-cache-dir -r requirements_clean.txt
 
-# Copia resto do código (depois das dependências para melhor cache)
+# Tenta instalar ddtrace de diferentes formas (do mais novo para mais antigo)
+RUN pip install --no-cache-dir "ddtrace>=2.8.0" || \
+    pip install --no-cache-dir "ddtrace>=2.0.0" || \
+    pip install --no-cache-dir "ddtrace>=1.18.0" || \
+    pip install --no-cache-dir "ddtrace==1.17.0" || \
+    (echo "Instalando ddtrace sem AppSec..." && \
+     pip install --no-cache-dir ddtrace==1.0.2 --no-binary ddtrace --install-option="--without-appsec") || \
+    (echo "Fallback: ddtrace básico sem extensões C..." && \
+     DD_COMPILE_DEBUG=1 pip install --no-cache-dir ddtrace==1.0.2 --no-deps --force-reinstall)
+
+# Copia código da aplicação
 COPY . .
 
 # Executa make se existir
-RUN make copy-envs || echo "make copy-envs falhou"
+RUN make copy-envs || echo "make copy-envs falhou ou não existe"
 
 # --------------------
 # Stage 2: Runtime
 # --------------------
 FROM base AS runtime
 
-# Instala apenas runtime dependencies
+# Instala apenas runtime dependencies mínimas
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl jq bash \
         unixodbc \
-        libstdc++6 \
         libffi7 \
     && rm -rf /var/lib/apt/lists/* \
     && usermod -u 1000 www-data && usermod -aG staff www-data
 
-# Copia pacotes Python instalados
+# Copia apenas pacotes Python necessários
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copia o código da aplicação
+# Copia aplicação
 COPY --from=builder /app /app
 
 WORKDIR /app
