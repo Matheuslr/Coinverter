@@ -1,5 +1,7 @@
-env/
-.env
+venv/
+env
+*.pyc
+.coverage
 .coverage.xml
 .gitignore
 README.md

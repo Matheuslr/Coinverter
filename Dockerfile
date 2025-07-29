@@ -1,35 +1,74 @@
-FROM python:3.9.6-slim-bullseye
+# --------------------
+# Base image (Debian slim)
+# --------------------
+FROM python:3.9.6-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    LD_LIBRARY_PATH=/usr/local/lib
 
-# Instala dependências do sistema
-RUN apt-get update && apt-get install -y \
-    gcc g++ make cmake curl jq git \
-    libtool autoconf automake pkg-config \
-    build-essential unixodbc-dev \
-    wait-for-it \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+# --------------------
+# Stage 1: Build
+# --------------------
+FROM base AS builder
 
-# Instala libddwaf (necessária para ddtrace com AppSec)
-RUN git clone https://github.com/DataDog/libddwaf.git /tmp/libddwaf && \
+# Instala ferramentas de build e libs necessárias (combinado em uma layer)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc g++ make cmake git \
+        curl jq bash \
+        libffi-dev \
+        libssl-dev \
+        unixodbc-dev \
+        libtool autoconf automake pkg-config \
+        python3-dev \
+        libstdc++6 \
+    && pip install --upgrade pip cython \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala libddwaf (otimizada com build paralelo)
+RUN git clone --depth 1 https://github.com/DataDog/libddwaf.git /tmp/libddwaf && \
     cd /tmp/libddwaf && mkdir build && cd build && \
-    cmake .. && make && make install && \
-    ldconfig && rm -rf /tmp/libddwaf
+    cmake .. && make -j$(nproc) && make install && \
+    rm -rf /tmp/libddwaf
 
-# Atualiza pip
-RUN pip install --no-cache-dir --upgrade pip
+# Diretório da aplicação
+WORKDIR /app
 
-# Copia o código e entra no diretório
-COPY . /server/
-WORKDIR /server
+# Copia apenas requirements.txt primeiro (melhor cache)
+COPY requirements.txt .
 
-# Copia variáveis de ambiente (caso use Makefile)
-RUN make copy-envs || echo "make copy-envs falhou (ignorado para build local)"
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Instala dependências Python
+# Instala dependências Python (será cached se requirements.txt não mudar)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Ajusta usuário para execução segura
-RUN usermod -u 1000 www-data && usermod -G staff www-data
+# Copia resto do código (depois das dependências para melhor cache)
+COPY . .
+
+# Executa make se existir
+RUN make copy-envs || echo "make copy-envs falhou"
+
+# --------------------
+# Stage 2: Runtime
+# --------------------
+FROM base AS runtime
+
+# Instala apenas runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl jq bash \
+        unixodbc \
+        libstdc++6 \
+        libffi7 \
+    && rm -rf /var/lib/apt/lists/* \
+    && usermod -u 1000 www-data && usermod -aG staff www-data
+
+# Copia libs da libddwaf e pacotes Python instalados
+COPY --from=builder /usr/local/lib /usr/local/lib
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copia o código da aplicação
+COPY --from=builder /app /app
+
+WORKDIR /app
 USER www-data
