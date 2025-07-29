@@ -1,28 +1,65 @@
+name: CI Pipeline
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
 
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
-      - name: Build the stack
-        run: docker compose up -d
+      - uses: actions/checkout@v4  # Atualizado
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo docker system prune -af
 
       - name: Create env file
         run: make copy-envs
 
+      - name: Build the stack
+        run: |
+          # Build com configurações otimizadas para CI
+          DOCKER_BUILDKIT=1 docker compose build \
+            --build-arg MAKEFLAGS="-j2" \
+            --build-arg CMAKE_BUILD_PARALLEL_LEVEL=2
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Wait for services
+        run: |
+          sleep 30
+          docker compose ps
+
       - name: Install Dependencies
         run: |
-          make dependencies
+          # Executa dentro do container, não no runner
+          docker compose exec -T app make dependencies
 
       - name: Run Lint
         run: |
-          make lint
+          docker compose exec -T app make lint
 
       - name: Run Tests
         run: |
-          make test-coverage
+          docker compose exec -T app make test-coverage
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose logs
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v
