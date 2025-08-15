@@ -20,18 +20,33 @@ COPY . .
 # Runtime stage
 FROM python:3.9.6-slim
 
+# Argumento para controlar se usa usuário não-root
+ARG USE_NON_ROOT_USER=true
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl unixodbc libffi7 libssl1.1 make \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -r -u 1000 app
+    && rm -rf /var/lib/apt/lists/*
+
+# Cria usuário app apenas se USE_NON_ROOT_USER for true
+RUN if [ "$USE_NON_ROOT_USER" = "true" ]; then \
+        useradd -r -u 1000 app; \
+    fi
 
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-RUN chown -R app:app /app
+# Ajusta permissões e muda usuário apenas se USE_NON_ROOT_USER for true
+RUN if [ "$USE_NON_ROOT_USER" = "true" ]; then \
+        chown -R app:app /app; \
+    fi
+
 WORKDIR /app
-USER app
+
+# Muda para usuário app apenas se USE_NON_ROOT_USER for true
+RUN if [ "$USE_NON_ROOT_USER" = "true" ]; then \
+        echo "USER app" >> /tmp/user_instruction; \
+    fi
 
 # Comando padrão que mantém container rodando para CI
 CMD ["tail", "-f", "/dev/null"]

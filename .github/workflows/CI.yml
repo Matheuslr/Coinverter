@@ -34,12 +34,13 @@ jobs:
       - name: Test Docker image
         run: |
           echo "=== Testing image build ==="
-          docker run --rm test-app python --version
-          docker run --rm test-app pip list | head -10
+          docker run --rm --user root test-app python --version
+          docker run --rm --user root test-app pip list | head -10
 
       - name: Run Dependencies Installation
         run: |
           docker run --rm \
+            --user root \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             test-app \
@@ -48,6 +49,7 @@ jobs:
       - name: Run Lint
         run: |
           docker run --rm \
+            --user root \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             test-app \
@@ -56,6 +58,7 @@ jobs:
       - name: Run Tests
         run: |
           docker run --rm \
+            --user root \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             test-app \
