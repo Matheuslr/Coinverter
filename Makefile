@@ -14,7 +14,7 @@ clean:  ## Remove cache files
 # Dependencies section
 ###
 _base-pip:
-	@pip install -U pip wheel
+	@pip install --user -U pip wheel || pip install -U pip wheel
 
 system-dependencies:
 	@sudo apt-get update -y && sudo apt-get install -y libpq-dev
@@ -23,7 +23,23 @@ export-requirements: _base-pip
 	@pip freeze > requirements.txt
 
 dependencies: _base-pip  ## Install dependencies
-	@pip install -r requirements.txt --upgrade pip
+	@pip install --user -r requirements.txt || pip install -r requirements.txt
+
+###
+# CI/CD specific targets
+###
+ci-dependencies:  ## Install dependencies for CI/CD (without --user flag issues)
+	@python -m pip install --upgrade pip wheel
+	@python -m pip install -r requirements.txt
+
+ci-test: clean  ## Run tests in CI/CD environment
+	@python -m pytest tests/ --cov app/ --cov-report term-missing --cov-report xml
+
+ci-lint:  ## Run lint in CI/CD environment
+	@python -m flake8 --show-source app/
+	@python -m isort --check-only app/
+	@python -m black --diff --check app/
+	@python -m pytest app/ --dead-fixtures || true
 
 ###
 # Run local section
